@@ -1,2 +1,2 @@
-# inverse_learning
+# backward_learning
 

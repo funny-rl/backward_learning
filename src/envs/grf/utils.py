@@ -338,6 +338,7 @@ def _get_avail(ball_distance, game_mode, ball_owned_team, sticky_actions, ball):
 class RewardModel:
     def __init__(self, episode_limit) -> None:
         self.episode_limit = episode_limit
+        self.pass_start = False
         
     def calc_reward(self, prev_obs, obs, done, actions):
         
@@ -349,7 +350,7 @@ class RewardModel:
         own_changing_r = ownership_changing_reward(prev_ball_owned_team, ball_owned_team)
         oob_r = out_of_boundary_reward(prev_obs["game_mode"], obs["game_mode"], obs["left_team"])
         
-        pass_r = pass_reward(
+        pass_r = self.pass_reward(
             prev_gamemode = prev_obs["game_mode"], 
             gamemode = obs["game_mode"],
             ball_owned_team = ball_owned_team,
@@ -368,6 +369,23 @@ class RewardModel:
             done = done,
         )
         return own_changing_r, oob_r, pass_r, yellow_r, ball_position_r, score_r
+    
+    def pass_reward(self, prev_gamemode, gamemode, ball_owned_team, \
+        prev_ball_owned_player, ball_owned_player, action):   
+        if prev_gamemode == gamemode == 0:
+            if prev_ball_owned_player not in (-1, 0) and action in (9, 10, 11) and ball_owned_team == 0 and not self.pass_start:
+                self.pass_start = True
+                self.passing_player = prev_ball_owned_player
+            if self.pass_start and ball_owned_team == 1:
+                self.pass_start = False
+            if self.pass_start and gamemode != 0:
+                self.pass_start = False
+            if self.pass_start and ball_owned_team == 0 and ball_owned_player != self.passing_player \
+                and ball_owned_player not in (-1, 0) and self.passing_player is not None:
+                self.pass_start = False
+                self.passing_player = None
+                return 0.05
+        return 0.0
 
 @jit(nopython=True) 
 def ownership_changing_reward(prev_ball_owned_team, ball_owned_team):
@@ -388,15 +406,6 @@ def out_of_boundary_reward(prev_game_mode, game_mode, left_team_position):
             if x_pos < -1.0 or x_pos > 1.0 or y_pos < -0.42 or y_pos > 0.42:
                 oob_player += 1.0
     return -0.0001 * oob_player
-
-@jit(nopython=True) 
-def pass_reward(prev_gamemode, gamemode, ball_owned_team, \
-    prev_ball_owned_player, ball_owned_player, action):   
-    if prev_gamemode == gamemode == 0:
-        if prev_ball_owned_player not in (-1, 0) and action in (9, 10, 11):
-            if ball_owned_team == 0 and prev_ball_owned_player != ball_owned_player:
-                return 0.1
-    return 0.0
 
 @jit(nopython=True)
 def yellow_reward(prev_yellow, yellow):
