@@ -1,0 +1,35 @@
+env: _11_vs_11_backward_learning # google research football
+
+env_args:
+  dense_reward: False
+  write_full_episode_dumps: True
+  write_goal_dumps: True
+  dump_freq: 1000
+  render: False
+  n_agents: 10
+  n_enemies: 11
+  episode_limit: 500
+  time_step: 0
+  env_name: "11_vs_11_backward_learning"
+  stacked: False 
+  representation: "raw"
+  rewards: "scoring"
+  logdir: "../results/replays"
+  write_video: True
+  number_of_right_players_agent_controls: 0
+  sampling: False
+  seed: 0
+
+batch_size: 32
+test_greedy: True
+test_nepisode: 20
+test_interval: 10000
+log_interval: 2000
+runner_log_interval: 2000
+learner_log_interval: 2000
+t_max: 50050000
+backward_learning: True
+num_backward_episode: 10
+from_scratch: False
+decay_rate: 0.8
+supervised_learning: False

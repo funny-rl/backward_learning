@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+*.pyo
+
+results/*
+metrica/metrica/*
+src/data/real_data/*
+src/data/dump/*
+src/data/txt/*

@@ -1,0 +1,34 @@
+env: sampling 
+
+env_args:
+  dense_reward: False
+  write_full_episode_dumps: False
+  write_goal_dumps: True
+  dump_freq: 1
+  render: False
+  n_agents: 0
+  n_enemies: 0
+  episode_limit: 500
+  time_step: 0
+  env_name: "11_vs_11_hard_stochastic"
+  stacked: False # return the 4 stacked observations for "pixels", "pixels_gray" or "extracted"
+  representation: "raw"
+  rewards: "scoring"
+  logdir: "../../../data/dump"
+  write_video: False
+  number_of_right_players_agent_controls: 0
+  sampling: True
+  n_sampling: 100
+  seed: 0
+
+runner: sampling
+save_model: False 
+batch_size_run: 1
+batch_size: 32
+test_greedy: True
+test_nepisode: 32
+test_interval: 10000
+log_interval: 2000
+runner_log_interval: 2000
+learner_log_interval: 2000
+t_max: 10050000
