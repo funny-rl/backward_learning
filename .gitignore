@@ -7,3 +7,12 @@ metrica/metrica/*
 src/data/real_data/*
 src/data/dump/*
 src/data/txt/*
+
+.ipynb_checkpoints/
+__pycache__/
+
+metrica/data
+real_data/real_data
+
+*.pt
+*.json

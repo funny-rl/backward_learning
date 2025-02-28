@@ -3,7 +3,7 @@
 
 runner: "parallel" # Runs 1 env for an episode
 mac: "basic_mac" # Basic controller
-env: "sc2" # Environment name
+env: "grf" # Environment name
 env_args: {} # Arguments for the environment
 batch_size_run: 8 # Number of environments to run in parallel
 test_nepisode: 16 # Number of episodes to test for
@@ -22,7 +22,7 @@ burn_in_period: 32
 
 # --- Logging options ---
 use_wandb: False # Log results to wandb
-username: "singfor7012"
+username: "sangkiko"
 group_name: "Test"
 save_model: True # Save the models to disk
 save_model_interval: 5000000 # Save models after this many timesteps
