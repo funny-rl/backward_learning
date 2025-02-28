@@ -16,7 +16,7 @@ class BasicMAC:
         self.agent_output_type = args.agent_output_type
 
         self.action_selector = action_REGISTRY[args.action_selector](args)
-        self.save_probs = getattr(self.args, 'save_probs', False)
+        self.save_probs = getattr(self.args, "save_probs", False)
 
         self.hidden_states = None
 
@@ -26,7 +26,9 @@ class BasicMAC:
         # Only select actions for the selected batch elements in bs
         avail_actions = ep_batch["avail_actions"][:, t_ep]
         agent_outputs = self.forward(ep_batch, t_ep, test_mode=test_mode)
-        chosen_actions = self.action_selector.select_action(agent_outputs[bs], avail_actions[bs], t_env, test_mode=test_mode)
+        chosen_actions = self.action_selector.select_action(
+            agent_outputs[bs], avail_actions[bs], t_env, test_mode=test_mode
+        )
         return chosen_actions
 
     def forward(self, ep_batch, t, test_mode=False):
@@ -40,17 +42,17 @@ class BasicMAC:
                 # Make the logits for unavailable actions very negative to minimise their affect on the softmax
                 agent_outs = agent_outs.reshape(ep_batch.batch_size * self.n_agents, -1)
                 reshaped_avail_actions = avail_actions.reshape(ep_batch.batch_size * self.n_agents, -1)
-                agent_outs[reshaped_avail_actions == 0] = float('-inf')
+                agent_outs[reshaped_avail_actions == 0] = float("-inf")
 
             agent_outs = th.nn.functional.softmax(agent_outs, dim=-1)
-            
+
         return agent_outs.view(ep_batch.batch_size, self.n_agents, -1)
 
     def init_hidden(self, batch_size, n_agents):
         self.hidden_states = self.agent.init_hidden()
         if self.hidden_states is not None:
             self.hidden_states = self.hidden_states.unsqueeze(0).expand(batch_size, n_agents, -1)  # bav
-            
+
     def supervised_select_actions(self, batch, test_mode=False):
         batch = batch.reshape(int(batch.shape[0] / self.n_agents), self.n_agents, -1)
         batch_size = batch.shape[0]
@@ -91,7 +93,7 @@ class BasicMAC:
         # for p in list(self.parameters()):
         #     print(p.shape)
 
-    def _build_inputs(self, batch, t, test_mode = False):
+    def _build_inputs(self, batch, t, test_mode=False):
         # Assumes homogenous agents with flat observations.
         # Other MACs might want to e.g. delegate building inputs to each agent
         bs = batch.batch_size
@@ -101,7 +103,7 @@ class BasicMAC:
             if t == 0:
                 inputs.append(th.zeros_like(batch["actions_onehot"][:, t]))
             else:
-                inputs.append(batch["actions_onehot"][:, t-1])
+                inputs.append(batch["actions_onehot"][:, t - 1])
         if self.args.obs_agent_id:
             inputs.append(th.eye(self.n_agents, device=batch.device).unsqueeze(0).expand(bs, -1, -1))
 
@@ -116,6 +118,6 @@ class BasicMAC:
             input_shape += self.n_agents
 
         return input_shape
-    
+
     def init_epsilon(self, t_env):
         self.action_selector.end_backward_step = t_env
