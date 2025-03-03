@@ -7,8 +7,8 @@ PENALTY_Y, END_Y = 0.27, 0.42
 
 class FeatureModel:
     def __init__(self, n_agents, n_enemies, obs_ally_feature_dim, obs_enemy_feature_dim, state_agent_feature_dim, state_enemy_feature_dim):
-        self.n_agents = n_agents # exclouding goalkeeper
-        self.n_allies = self.n_agents # including goalkeeper
+        self.n_agents = n_agents 
+        self.n_allies = self.n_agents 
         self.n_enemies = n_enemies
         
         self.obs_ally_feature_dim = obs_ally_feature_dim
@@ -29,6 +29,7 @@ class FeatureModel:
             
             'score' / 'steps_left' / 'designated' / 'sticky_actions'
         """
+        
         player_num = obs['active'] # int
         player_pos_x, player_pos_y = obs["left_team"][player_num] # vector 2
         player_position = obs["left_team"][player_num]
@@ -38,6 +39,10 @@ class FeatureModel:
         is_dribbling = obs["sticky_actions"][9]
         is_sprinting = obs["sticky_actions"][8]
         
+        player_role = obs["left_team_roles"][player_num]
+        role_one_hot = np.zeros(10)
+        role_one_hot[player_role] = 1.0
+
         touch_line = END_Y - abs(player_pos_y)
         goal_line = END_X - abs(player_pos_x)  
         
@@ -75,6 +80,7 @@ class FeatureModel:
                 [player_speed * 100],
                 [touch_line, goal_line],
                 [ball_far, player_tired, is_dribbling, is_sprinting],
+                role_one_hot
             )
         )
         ball_obs = np.concatenate(
@@ -94,24 +100,26 @@ class FeatureModel:
         obs_left_team_direction = np.delete(obs["left_team_direction"], player_num, axis=0) - player_direction
         left_team_distance = np.linalg.norm(left_team_relative - player_position, axis=1, keepdims=True)
         left_team_tired = np.delete(obs["left_team_tired_factor"], player_num, axis=0).reshape(-1, 1)
+        left_team_role = np.delete(obs["left_team_roles"], player_num, axis=0)
 
         left_team_obs = ally_info(left_team_relative, obs_left_team_direction, left_team_distance, \
-            left_team_tired, self.n_allies, self.obs_ally_feature_dim)
-        
-        obs_right_team = np.array(obs["right_team"]) - player_position
-        obs_right_team_direction = np.array(obs["right_team_direction"]) - player_direction
+            left_team_tired, self.n_allies, left_team_role, self.obs_ally_feature_dim)
+
+        obs_right_team = obs["right_team"] - player_position
+        obs_right_team_direction = obs["right_team_direction"] - player_direction
         right_team_distance = np.linalg.norm(obs_right_team - player_position, axis=1, keepdims=True)
-        right_team_tired = np.array(obs["right_team_tired_factor"]).reshape(-1, 1)
+        right_team_tired = obs["right_team_tired_factor"].reshape(-1, 1)
+        right_team_role = obs["right_team_roles"]
         
-        right_team_obs = enemy_info(obs_right_team, obs_right_team_direction, right_team_distance, \
-            right_team_tired, self.n_enemies, self.obs_enemy_feature_dim)
-        
+        right_team_obs = _enemy_info(obs_right_team, obs_right_team_direction, right_team_distance, \
+            right_team_tired, self.n_enemies, right_team_role, self.obs_enemy_feature_dim)
         avail = _get_avail(
             ball_distance, 
             obs["game_mode"],
             obs["ball_owned_team"],
             obs["sticky_actions"],
             obs["ball"],
+            player_num,
         )
 
         # end_time = time.time()
@@ -129,11 +137,26 @@ class FeatureModel:
         
         ball_xy_pos = obs["ball"][:2]
         
-        left_team_state = state_agent_info(obs["left_team"], obs["left_team_direction"], \
-            obs["left_team_tired_factor"], obs["sticky_actions"], ball_xy_pos, self.n_agents, self.state_agent_feature_dim)
+        left_team_state = state_agent_info(
+            obs["left_team"], 
+            obs["left_team_direction"],
+            obs["left_team_tired_factor"], 
+            obs["sticky_actions"], 
+            ball_xy_pos, 
+            self.n_agents, 
+            obs["left_team_roles"], 
+            self.state_agent_feature_dim
+        )
         
-        right_team_state = state_enemy_info(obs["right_team"], obs["right_team_direction"], \
-            obs["right_team_tired_factor"], ball_xy_pos, self.n_enemies, self.state_enemy_feature_dim)
+        right_team_state = state_enemy_info(
+            obs["right_team"], 
+            obs["right_team_direction"],
+            obs["right_team_tired_factor"], 
+            ball_xy_pos, 
+            self.n_enemies, 
+            obs["right_team_roles"], 
+            self.state_enemy_feature_dim
+        )
         
         ball_x, ball_y, _ = obs["ball"]
         ball_which_zone = self._encode_ball_which_zone(ball_x, ball_y)
@@ -180,24 +203,46 @@ class FeatureModel:
             return [0, 0, 0, 0, 0, 1.0]
 
 @jit(nopython=True) 
-def ally_info(left_team_relative, obs_left_team_direction, left_team_distance, left_team_tired, n_allies, ally_feature_dim):
+def ally_info(
+        left_team_relative, 
+        obs_left_team_direction, 
+        left_team_distance, 
+        left_team_tired,
+        n_allies, 
+        left_team_role, 
+        ally_feature_dim
+    ):
     ally_feature = np.zeros((n_allies, ally_feature_dim))
     for idx in range(n_allies):
         ally_feature[idx, 0 : 2] = left_team_relative[idx]
         ally_feature[idx, 2 : 4] = obs_left_team_direction[idx]
         ally_feature[idx, 4] = left_team_distance[idx][0]
         ally_feature[idx, 5] = left_team_tired[idx][0]
+        left_role = np.zeros(10)
+        left_role[left_team_role[idx]] = 1.0
+        ally_feature[idx, 6:] = left_role
     return ally_feature
 
 @jit(nopython=True) 
-def enemy_info(obs_right_team, obs_right_team_direction, right_team_distance, right_team_tired, n_enemies, enemy_feature_dim):
-    ally_feature = np.zeros((n_enemies, enemy_feature_dim))
+def _enemy_info(
+        obs_right_team, 
+        obs_right_team_direction, 
+        right_team_distance, 
+        right_team_tired, 
+        n_enemies, 
+        right_team_role, 
+        enemy_feature_dim
+    ):
+    enemy_feature = np.zeros((n_enemies, enemy_feature_dim))
     for idx in range(n_enemies):
-        ally_feature[idx, 0 : 2] = obs_right_team[idx]
-        ally_feature[idx, 2 : 4] = obs_right_team_direction[idx]
-        ally_feature[idx, 4] = right_team_distance[idx][0]
-        ally_feature[idx, 5] = right_team_tired[idx][0]
-    return ally_feature
+        enemy_feature[idx, 0 : 2] = obs_right_team[idx]
+        enemy_feature[idx, 2 : 4] = obs_right_team_direction[idx]
+        enemy_feature[idx, 4] = right_team_distance[idx][0]
+        enemy_feature[idx, 5] = right_team_tired[idx][0]
+        right_role = np.zeros(10)
+        right_role[right_team_role[idx]] = 1.0
+        enemy_feature[idx, 6:] = right_role
+    return enemy_feature
 
 @jit(nopython=True) 
 def l2_norm(vec):
@@ -207,9 +252,19 @@ def l2_norm(vec):
     return norm ** 0.5  
 
 @jit(nopython=True) 
-def state_agent_info(left_team, left_team_direction, left_team_tired_factor, sticky_actions, ball_xy_pos, n_agents, state_agent_feature_dim):
-    agent_features = np.zeros((n_agents + 1) * state_agent_feature_dim)
-    for idx in range(n_agents + 1):
+def state_agent_info(
+        left_team, 
+        left_team_direction, 
+        left_team_tired_factor, 
+        sticky_actions,
+        ball_xy_pos, 
+        n_agents, 
+        left_team_roles, 
+        state_agent_feature_dim
+    ):
+    n_player = len(left_team)
+    agent_features = np.zeros(n_player * state_agent_feature_dim)
+    for idx in range(n_player):
         index = idx * state_agent_feature_dim
         player_xy_pos = left_team[idx]
         left_player_direction = left_team_direction[idx]
@@ -219,24 +274,38 @@ def state_agent_info(left_team, left_team_direction, left_team_tired_factor, sti
         agent_features[index + 5] = left_team_tired_factor[idx]
         agent_features[index + 6] = sticky_actions[idx]
         agent_features[index + 7] = l2_norm(player_xy_pos - ball_xy_pos)
+        agent_role = np.zeros(10)
+        agent_role[left_team_roles[idx]] = 1.0
+        agent_features[index + 8: index + 18] = agent_role
     return agent_features
 
 @jit(nopython=True) 
-def state_enemy_info(right_team, right_team_direction, right_team_tired_factor, ball_xy_pos, n_enemies, state_enemy_feature_dim):
-    enemies_feature = np.zeros(n_enemies * state_enemy_feature_dim)
+def state_enemy_info(
+        right_team, 
+        right_team_direction, 
+        right_team_tired_factor, 
+        ball_xy_pos, 
+        n_enemies, 
+        right_team_roles, 
+        state_enemy_feature_dim
+    ):
+    enemy_feature = np.zeros(n_enemies * state_enemy_feature_dim)
     for idx in range(n_enemies):
         index = idx * state_enemy_feature_dim
         player_xy_pos = right_team[idx]
         right_player_direction = right_team_direction[idx]
-        enemies_feature[index : index + 2] = player_xy_pos
-        enemies_feature[index + 2 : index + 4] = right_player_direction
-        enemies_feature[index + 4] = l2_norm(right_player_direction)
-        enemies_feature[index + 5] = right_team_tired_factor[idx]
-        enemies_feature[index + 6] = l2_norm(player_xy_pos - ball_xy_pos)
-    return enemies_feature
+        enemy_feature[index : index + 2] = player_xy_pos
+        enemy_feature[index + 2 : index + 4] = right_player_direction
+        enemy_feature[index + 4] = l2_norm(right_player_direction)
+        enemy_feature[index + 5] = right_team_tired_factor[idx]
+        enemy_feature[index + 6] = l2_norm(player_xy_pos - ball_xy_pos)
+        enemy_role = np.zeros(10)
+        enemy_role[right_team_roles] = 1.0
+        enemy_feature[index + 7: index + 17] = enemy_role
+    return enemy_feature
 
 @jit(nopython=True) 
-def _get_avail(ball_distance, game_mode, ball_owned_team, sticky_actions, ball):
+def _get_avail(ball_distance, game_mode, ball_owned_team, sticky_actions, ball, player_num):
     avail = np.ones(19, dtype=np.int32)
     (
         NO_OP,
@@ -336,27 +405,43 @@ def _get_avail(ball_distance, game_mode, ball_owned_team, sticky_actions, ball):
 
 
 class RewardModel:
-    def __init__(self, episode_limit) -> None:
+    def __init__(self, episode_limit, batch_size_run) -> None:
         self.episode_limit = episode_limit
-        self.pass_start = False
+        self.batch_size_run = batch_size_run
+        self.pass_start = [False for _ in range(self.batch_size_run)]
+        self.passing_player = [None for _ in range(self.batch_size_run)]
+        self.passing_x = [None for _ in range(self.batch_size_run)]
+
+    def calc_reward(self, prev_obs, obs, done, actions, batch_idx, time_step):
         
-    def calc_reward(self, prev_obs, obs, done, actions):
-        
+        if time_step == 1:
+            self.pass_start = [False for _ in range(self.batch_size_run)]
+            self.passing_player = [None for _ in range(self.batch_size_run)]
+            
         prev_ball_owned_player = prev_obs["ball_owned_player"]
-      
         prev_ball_owned_team = prev_obs["ball_owned_team"]
+        
         ball_owned_team = obs["ball_owned_team"]
+        ball_owned_player = obs["ball_owned_player"]
         
-        own_changing_r = ownership_changing_reward(prev_ball_owned_team, ball_owned_team)
+        own_changing_r = self.ownership_changing_reward(prev_ball_owned_team, ball_owned_team, batch_idx)
         oob_r = out_of_boundary_reward(prev_obs["game_mode"], obs["game_mode"], obs["left_team"])
-        
+
         pass_r = self.pass_reward(
             prev_gamemode = prev_obs["game_mode"], 
             gamemode = obs["game_mode"],
             ball_owned_team = ball_owned_team,
             prev_ball_owned_player = prev_ball_owned_player,
-            ball_owned_player = obs["ball_owned_player"],
-            action = actions[prev_ball_owned_player - 1],
+            ball_owned_player = ball_owned_player,
+            actions = actions,
+            batch_idx = batch_idx,
+            prev_ball_x = prev_obs["ball"][0],
+            ball_x = obs["ball"][0]
+        )
+        
+        player_pos_r = player_pos_reward(
+            left_team_pos = obs["left_team"],
+            ball_pos = obs["ball"][:2],
         )
             
         yellow_r = yellow_reward(
@@ -368,36 +453,55 @@ class RewardModel:
             score = obs["score"],
             done = done,
         )
-        return own_changing_r, oob_r, pass_r, yellow_r, ball_position_r, score_r
+        return own_changing_r, oob_r, pass_r, player_pos_r, yellow_r, ball_position_r, score_r
     
     def pass_reward(self, prev_gamemode, gamemode, ball_owned_team, \
-        prev_ball_owned_player, ball_owned_player, action):   
-        if prev_gamemode == gamemode == 0:
-            if prev_ball_owned_player not in (-1, 0) and action in (9, 10, 11) and ball_owned_team == 0 and not self.pass_start:
-                self.pass_start = True
-                self.passing_player = prev_ball_owned_player
-            if self.pass_start and ball_owned_team == 1:
-                self.pass_start = False
-            if self.pass_start and gamemode != 0:
-                self.pass_start = False
-            if self.pass_start and ball_owned_team == 0 and ball_owned_player != self.passing_player \
-                and ball_owned_player not in (-1, 0) and self.passing_player is not None:
-                self.pass_start = False
-                self.passing_player = None
-                return 0.05
+        prev_ball_owned_player, ball_owned_player, actions, batch_idx, prev_ball_x, ball_x):   
+        if (prev_gamemode == gamemode == 0): # only in game mode 0
+            if (prev_ball_owned_player not in (-1, 0)) and (ball_owned_player not in (-1, 0)): # if the ball was owned by someone
+                if actions[ball_owned_player - 1] in (9, 10, 11) and ball_owned_team == 0 and not self.pass_start[batch_idx]:
+                    self.pass_start[batch_idx] = True
+                    self.passing_player[batch_idx] = prev_ball_owned_player
+                    self.passing_x[batch_idx] = prev_ball_x
+                    
+        if self.pass_start[batch_idx]:
+            if ball_owned_team == 1:
+                self.pass_start[batch_idx] = False
+                self.passing_player[batch_idx] = None
+            if gamemode != 0:
+                self.pass_start[batch_idx] = False
+                self.passing_player[batch_idx] = None
+            if ball_owned_player == 0:
+                self.pass_start[batch_idx] = False
+                self.passing_player[batch_idx] = None
+            if ball_owned_team == 0 and ball_owned_player != self.passing_player[batch_idx]:
+                self.pass_start[batch_idx] = False
+                self.passing_player[batch_idx] = None
+                if ball_x - self.passing_x[batch_idx] > 0:
+                    self.passing_x[batch_idx] = None   
+                    return 0.1
+                else:
+                    self.passing_x[batch_idx] = None
+                    return 0.0
         return 0.0
 
-@jit(nopython=True) 
-def ownership_changing_reward(prev_ball_owned_team, ball_owned_team):
-    if prev_ball_owned_team == 1 and ball_owned_team == 0 or \
-        prev_ball_owned_team == -1 and ball_owned_team == 0: # us -> them & None -> us
-        return 0.002
-    elif prev_ball_owned_team == 0 and ball_owned_team == 1 or \
-        prev_ball_owned_team == -1 and ball_owned_team == 1: # them -> us & None -> them
-        return -0.003
-    else:
-        return 0.0
-    
+    def ownership_changing_reward(self, prev_ball_owned_team, ball_owned_team, batch_idx):
+
+        if prev_ball_owned_team == 1 and ball_owned_team == 0:
+            return 0.001
+        elif prev_ball_owned_team == 0 and ball_owned_team == 1:
+            return -0.0015
+        elif prev_ball_owned_team == -1 and ball_owned_team == 0:
+            if self.pass_start[batch_idx]:
+                return 0.0
+            else:
+                return 0.001
+        elif prev_ball_owned_team == -1 and ball_owned_team == 1:
+            return -0.0015
+        elif prev_ball_owned_team == 1 and ball_owned_team == 1:
+            return -0.002
+        else:
+            return 0.0
 @jit(nopython=True) 
 def out_of_boundary_reward(prev_game_mode, game_mode, left_team_position):
     oob_player = 0.0
@@ -413,19 +517,24 @@ def yellow_reward(prev_yellow, yellow):
     return -0.1 * left_yellow
 
 @jit(nopython=True)
+def player_pos_reward(left_team_pos, ball_pos):
+    if np.all((left_team_pos - ball_pos)[:, 0] >= 0.0):
+        return -0.01
+    else:
+        return 0.0
+
+@jit(nopython=True)
 def ball_position_reward(ball_position):
     ball_x, ball_y, _ = ball_position
-
-    
     ball_position_r = 0.0
     if (-END_X <= ball_x and ball_x < -PENALTY_X) and (
         -PENALTY_Y < ball_y and ball_y < PENALTY_Y
     ):
-        ball_position_r = -0.0005
+        ball_position_r = -0.005
     elif (-END_X <= ball_x and ball_x < -MIDDLE_X) and (
         -END_Y < ball_y and ball_y < END_Y
     ):
-        ball_position_r = -0.0001
+        ball_position_r = -0.001
     elif (-MIDDLE_X <= ball_x and ball_x <= MIDDLE_X) and (
         -END_Y < ball_y and ball_y < END_Y
     ):
@@ -433,11 +542,11 @@ def ball_position_reward(ball_position):
     elif (MIDDLE_X < ball_x and ball_x <= END_X) and (
         -END_Y < ball_y and ball_y < END_Y
     ):
-        ball_position_r = 0.0001
+        ball_position_r = 0.001
     elif (PENALTY_X < ball_x and ball_x <= END_X) and (
         -PENALTY_Y < ball_y and ball_y < PENALTY_Y
     ):
-        ball_position_r = 0.0005
+        ball_position_r = 0.005
 
     else:
         ball_position_r = 0.0
@@ -447,9 +556,11 @@ def ball_position_reward(ball_position):
 @jit(nopython=True)
 def score_reward(score, done):
     my_score, opponent_score = score
-    if my_score > opponent_score:
+    if done and my_score > opponent_score:
         return 10.0
-    elif done or my_score < opponent_score:
-        return -1.0
+    elif done and my_score < opponent_score:
+        return -2.0
+    elif done and my_score == opponent_score:
+        return -1.5
     else:
         return 0.0

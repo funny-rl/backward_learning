@@ -8,7 +8,6 @@ class SPECTra_RNNAgent(nn.Module):
         super(SPECTra_RNNAgent, self).__init__()
         self.args = args
         self.n_agents = args.n_agents
-        self.n_allies = args.n_allies
         self.n_enemies = args.n_enemies
         self.n_entities = self.n_agents + self.n_enemies
         self.n_actions = self.args.n_actions

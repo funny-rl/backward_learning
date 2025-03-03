@@ -12,6 +12,7 @@ class ST_HyperNet(nn.Module):
         self.hypernet_embed = args.hypernet_embed
         
         self.n_agents = args.n_agents
+        self.n_players = self.n_agents + 1  # including goalkeeper
         self.n_enemies = args.n_enemies
         self.entities = self.n_agents + self.n_enemies
         
@@ -21,7 +22,7 @@ class ST_HyperNet(nn.Module):
         self.enemy_embedding = nn.Linear(self.state_component[1], self.hypernet_embed)
         self.ball_embedding = nn.Linear(self.state_component[2], self.hypernet_embed)
         
-        self.agent_features = self.state_component[0] * (self.n_agents + 1)
+        self.agent_features = self.state_component[0] * self.n_players
         self.enemy_features = self.state_component[1] * self.n_enemies
             
         self.cross_attention = CrossAttentionBlock(
@@ -54,7 +55,7 @@ class ST_HyperNet(nn.Module):
     def forward(self, state): # state: [batch * t, state] 
         bs_t = state.size(0)
         
-        agent_state = state[:, :self.agent_features].reshape(bs_t, self.n_agents + 1, -1)
+        agent_state = state[:, :self.agent_features].reshape(bs_t, self.n_players, -1)
         enemy_state = state[:, self.agent_features : self.agent_features + self.enemy_features].reshape(bs_t, self.n_enemies, -1)
         ball_state = state[:, self.agent_features + self.enemy_features:].reshape(bs_t, 1, -1)
 
@@ -64,14 +65,13 @@ class ST_HyperNet(nn.Module):
 
         embed = th.cat((a_embed, e_embed, b_embed), dim=1)
         x = self.cross_attention(a_embed, embed)
-        
         weight_x = self.weight_mlp(x)
         bias_x = self.bias_mlp(x)
-        weight_x = x + weight_x
-        bias_x = x + bias_x
+        weight_x = (x + weight_x)[:, 1:]
+        bias_x = (x + bias_x)[:, 1:]
         
-        weight = self.weight_generator(weight_x, weight_x)[: , :self.n_agents, :self.n_agents]
-        bias = self.bias_generator(bias_x)[: , :, :self.n_agents]
+        weight = self.weight_generator(weight_x, weight_x)
+        bias = self.bias_generator(bias_x)
         return weight, bias 
     
 class SPECTraMixer(nn.Module):

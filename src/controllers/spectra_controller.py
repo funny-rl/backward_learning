@@ -9,7 +9,7 @@ class SPECTraMAC(BasicMAC):
     def __init__(self, scheme, groups, args):
         self.args = args
         self.n_enemies = args.n_enemies
-        self.n_allies = args.n_allies # because of goalkeeper
+        self.n_allies = args.n_allies 
         self.obs_own_feature_dims, self.obs_ball_feature_dims, \
                 self.obs_ally_feature_dim, self.obs_enemy_feature_dim = self.args.obs_component
         self.observer_feats = self.obs_own_feature_dims + self.obs_ball_feature_dims
@@ -22,7 +22,6 @@ class SPECTraMAC(BasicMAC):
     def _build_inputs(self, batch, t, test_mode):
         bs = batch.batch_size
         raw_obs_t = batch["obs"][:, t]  # [batch, agent_num, obs_dim]
-        
         observer_feats_t, ally_feats_t, enemy_feats_t = th.split(raw_obs_t, self._get_obs_component_dim(), dim=-1)
         
         observer_feats_t = observer_feats_t.reshape(bs * self.n_agents, 1, -1)

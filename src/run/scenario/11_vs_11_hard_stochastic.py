@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
 from gfootball.scenarios import *
 
 def build_scenario(builder):
@@ -25,7 +24,7 @@ def build_scenario(builder):
   second_team = Team.e_Right
 
   builder.SetTeam(first_team)
-  builder.AddPlayer(-1.000000, 0.000000, e_PlayerRole_GK, controllable=False)
+  builder.AddPlayer(-1.000000, 0.000000, e_PlayerRole_GK)
   builder.AddPlayer(0.000000,  0.020000, e_PlayerRole_RM)
   builder.AddPlayer(0.000000, -0.020000, e_PlayerRole_CF)
   builder.AddPlayer(-0.422000, -0.19576, e_PlayerRole_LB)

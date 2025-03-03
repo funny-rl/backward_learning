@@ -80,6 +80,7 @@ def run_sequential(args, logger):
     sampling_episode = args.env_args["sampling"]
     scenario_manager = Scenario_Manager(args = args)
     args.env_args["env_name"] = scenario_manager.new_env_name 
+    args.env_args["batch_size_run"] = args.batch_size_run
     if args.backward_learning:
         args.level_file_path = scenario_manager.bulid_backward_file()
         

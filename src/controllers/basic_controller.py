@@ -57,7 +57,7 @@ class BasicMAC:
         agent_inputs = self.supervised_build_inputs(batch, test_mode)
         agent_outs, self.hidden_states = self.agent(agent_inputs, self.hidden_states)
         return agent_outs.view(batch_size, self.n_agents, -1)
-
+    
     def set_train_mode(self):
         self.agent.train()
 

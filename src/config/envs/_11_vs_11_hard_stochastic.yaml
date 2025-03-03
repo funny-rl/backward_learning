@@ -6,7 +6,7 @@ env_args:
   write_goal_dumps: False
   dump_freq: 1000
   render: False
-  n_agents: 10
+  n_agents: 11
   n_enemies: 11
   episode_limit: 500
   time_step: 0

@@ -15,7 +15,7 @@ class _11_vs_11_Hard_Stochastic(MultiAgentEnv):
         dense_reward=False,
         write_full_episode_dumps=False,
         write_goal_dumps=False,
-        dump_freq=500,
+        dump_freq=1000,
         render=False,
         n_agents = 10,
         n_enemies = 11,
@@ -30,16 +30,18 @@ class _11_vs_11_Hard_Stochastic(MultiAgentEnv):
         number_of_right_players_agent_controls=0,
         sampling = False,
         n_sampling =  0,
-        seed=0
+        seed=0,
+        batch_size_run = 0,
     ):
         self.n_enemies = n_enemies
         self.dense_reward = dense_reward
         self.n_agents = n_agents
-        self.n_allies = n_agents # because of goal keeper
+        self.n_allies = n_agents # including goalkeeper
         self.episode_limit = episode_limit
         self.time_step = time_step
         self.write_video = write_video
         self.sampling = sampling
+        self.batch_size_run = batch_size_run
 
         self.env = football_env.create_environment(
             write_full_episode_dumps=write_full_episode_dumps,
@@ -60,13 +62,13 @@ class _11_vs_11_Hard_Stochastic(MultiAgentEnv):
         # init observation & state
         init_observations = self.env.reset() # List of observation dictionaries.
         if not self.sampling:
-            self.obs_own_feature_dims = 11
+            self.obs_own_feature_dims = 21
             self.obs_ball_feature_dims = 18
-            self.obs_ally_feature_dim = 6
-            self.obs_enemy_feature_dim = 6
+            self.obs_ally_feature_dim = 16
+            self.obs_enemy_feature_dim = 16
 
-            self.state_agent_feature_dim = 8
-            self.state_enemy_feature_dim = 7
+            self.state_agent_feature_dim = 18
+            self.state_enemy_feature_dim = 17
             self.state_ball_feature_dims = 15
             
             self.feature_encoder = FeatureModel(
@@ -77,7 +79,10 @@ class _11_vs_11_Hard_Stochastic(MultiAgentEnv):
                 state_agent_feature_dim = self.state_agent_feature_dim,
                 state_enemy_feature_dim = self.state_enemy_feature_dim,
             )
-            self.reward_model = RewardModel(episode_limit = self.episode_limit)
+            self.reward_model = RewardModel(
+                episode_limit = self.episode_limit, 
+                batch_size_run = self.batch_size_run
+            )
             
             # init action space
             self.action_space = [gym.spaces.Discrete(self.env.action_space.nvec[1]) for _ in range(self.n_agents)]
@@ -103,7 +108,7 @@ class _11_vs_11_Hard_Stochastic(MultiAgentEnv):
     def _encode_state(self, raw_obs):
         return self.feature_encoder.encode_state(raw_obs.copy())
 
-    def step(self, actions):
+    def step(self, actions, batch_idx = None):
         """Returns reward, terminated, info."""
         if not self.sampling:
             self.time_step += 1
@@ -121,8 +126,25 @@ class _11_vs_11_Hard_Stochastic(MultiAgentEnv):
             self._obs = np.array(obs)
             self._state = self._encode_state(obs_dict)  # Because it is absolute coordinates, it does not matter if information from a specific agent is used.
             self.ava = np.array(ava)
-            own_changing_r, oob_r, pass_r, yellow_r, ball_position_r, score_r = self.reward_model.calc_reward(self.prev_obs[0], o[0], done, actions)
-            rewards = (own_changing_r, oob_r, pass_r, yellow_r, ball_position_r, score_r)
+            
+            own_changing_r, oob_r, pass_r, yellow_r, ball_position_r, score_r = self.reward_model.calc_reward(
+                self.prev_obs[0], 
+                o[0], 
+                done, 
+                actions, 
+                batch_idx,
+                self.time_step
+            )
+            
+            rewards = (
+                own_changing_r, 
+                oob_r, 
+                pass_r, 
+                yellow_r, 
+                ball_position_r, 
+                score_r, 
+                
+            )
         
             self.prev_obs = o
             return rewards, done, infos

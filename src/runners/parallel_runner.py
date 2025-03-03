@@ -124,10 +124,11 @@ class ParallelRunner:
             total_own_changing_r,
             total_oob_r,
             total_pass_r,
+            total_player_pos_r,
             total_yellow_r,
             total_ball_position_r,
             total_score_r,
-        ) = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+        ) = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
         
         while True:
 
@@ -147,9 +148,8 @@ class ParallelRunner:
             for idx, parent_conn in enumerate(self.parent_conns):
                 if idx in envs_not_terminated: # We produced actions for this env
                     if not terminated[idx]: # Only send the actions to the env if it hasn't terminated
-                        parent_conn.send(("step", cpu_actions[action_idx]))
-                    action_idx += 1 # actions is not a list over every env
-
+                        parent_conn.send(("step", (cpu_actions[action_idx], action_idx)))
+                    action_idx += 1
             # Update envs_not_terminated
             envs_not_terminated = [b_idx for b_idx, termed in enumerate(terminated) if not termed]
             all_terminated = all(terminated)
@@ -173,21 +173,23 @@ class ParallelRunner:
                 batch_own_changing_r,
                 batch_oob_r,
                 batch_pass_r,
+                batch_player_pos_r,
                 batch_yellow_r,
                 batch_ball_position_r,
                 batch_score_r,
-            ) = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+            ) = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
             
             # Receive data back for each unterminated env
             for idx, parent_conn in enumerate(self.parent_conns):
                 if not terminated[idx]:
                     data = parent_conn.recv()
                     # Remaining data for this current timestep
-                    own_changing_r, oob_r, pass_r, yellow_r, ball_position_r, score_r = data["reward"]
+                    own_changing_r, oob_r, pass_r, yellow_r, player_pos_r, ball_position_r, score_r = data["reward"]
                     
                     batch_own_changing_r += own_changing_r
                     batch_oob_r += oob_r
                     batch_pass_r += pass_r
+                    batch_player_pos_r += player_pos_r
                     batch_yellow_r += yellow_r
                     batch_ball_position_r += ball_position_r
                     batch_score_r += score_r
@@ -225,6 +227,7 @@ class ParallelRunner:
             total_own_changing_r += batch_own_changing_r
             total_oob_r += batch_oob_r 
             total_pass_r += batch_pass_r
+            total_player_pos_r += batch_player_pos_r
             total_yellow_r += batch_yellow_r 
             total_ball_position_r += batch_ball_position_r
             total_score_r += batch_score_r
@@ -283,6 +286,7 @@ class ParallelRunner:
                 self.logger.log_stat("ownership_changing_reward", total_own_changing_r, self.t_env)
                 self.logger.log_stat("out_of_bound_reward", total_oob_r, self.t_env)
                 self.logger.log_stat("pass_reward", total_pass_r, self.t_env)
+                self.logger.log_stat("player_position_reward", total_player_pos_r, self.t_env)
                 self.logger.log_stat("yellow_card_reward", total_yellow_r, self.t_env)
                 self.logger.log_stat("ball_position_reward", total_ball_position_r, self.t_env)
                 self.logger.log_stat("score_reward", total_score_r, self.t_env)
@@ -300,7 +304,7 @@ class ParallelRunner:
             if k != "n_episodes":
                 self.logger.log_stat(prefix + k + "_mean" , v/stats["n_episodes"], self.t_env)
         stats.clear()
-            
+        
     def supervised_learning(self):
         import os
         import torch.nn as nn
@@ -316,24 +320,32 @@ class ParallelRunner:
         data_path = os.path.join(os.getcwd(), "data/real_data")
         data_tensor = torch.tensor(
             pd.read_csv(os.path.join(data_path, "dataset_data.csv")).values, dtype=torch.float32
-        ).to(device)  # Move to GPU
+        ).to(
+            device
+        )  # Move to GPU
         label_tensor = torch.tensor(
-            pd.read_csv(os.path.join(data_path, "dataset_label.csv")).values, dtype=torch.float32
-        ).to(device)  # Move to GPU
+            pd.read_csv(os.path.join(data_path, "dataset_label.csv")).values, dtype=torch.int8
+        ).to(
+            device
+        )  # Move to GPU
 
         test_data_tensor = torch.tensor(
             pd.read_csv(os.path.join(data_path, "test_dataset_data.csv")).values, dtype=torch.float32
-        ).to(device)  # Move to GPU
+        ).to(
+            device
+        )  # Move to GPU
         test_label_tensor = torch.tensor(
-            pd.read_csv(os.path.join(data_path, "test_dataset_label.csv")).values, dtype=torch.float32
-        ).to(device)  # Move to GPU
+            pd.read_csv(os.path.join(data_path, "test_dataset_label.csv")).values, dtype=torch.int8
+        ).to(
+            device
+        )  # Move to GPU
         train_dataset = torch.utils.data.TensorDataset(data_tensor, label_tensor)
         test_dataset = torch.utils.data.TensorDataset(test_data_tensor, test_label_tensor)
 
         num_epochs = 100
         eval_interval = 1
-        batch_size = 80
-        patience = 5  
+        batch_size = 5120
+        patience = 5
         best_accuracy = 0.0
         patience_counter = 0
 
@@ -341,52 +353,65 @@ class ParallelRunner:
         test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
         criterion = nn.CrossEntropyLoss()
-        optimizer = optim.Adam(self.mac.agent.parameters(), lr=self.args.lr * 0.1)
-        
+        optimizer = optim.Adam(self.mac.agent.parameters(), lr=self.args.lr)
+
         self.mac.agent.to(device)
 
         self.mac.set_train_mode()
 
         for epoch in range(num_epochs):
-            self.mac.set_train_mode()
             total_loss = 0.0
-        
+
+            total_correct = 0
+            total_samples = 0
+
             self.mac.hidden_states = None
             self.mac.init_hidden(batch_size=int(batch_size / self.args.n_agents), n_agents=self.args.n_agents)
-            
+
             for batch in train_dataloader:
                 optimizer.zero_grad()
 
                 x, y = batch
                 if x.shape[0] != batch_size:
                     continue
-                outputs = self.mac.supervised_select_actions(x)
+                outputs = self.mac.supervised_select_actions(x).reshape(-1, 19)
 
-                one_hot_label = F.one_hot(y.to(torch.int64), num_classes=19).reshape(
+                one_hot_label = F.one_hot(y.to(torch.long), num_classes=19).reshape(
                     int(batch_size / self.args.n_agents), self.args.n_agents, 19
-                ).float()
-                
+                )
+
                 self.mac.hidden_states = self.mac.hidden_states.detach()
 
-                loss = criterion(outputs, one_hot_label)
+                total_samples += batch_size
+
+                indices = torch.argmax(outputs, dim=-1)
+
+                total_correct += (indices == y.reshape(-1)).sum().item()
+
+                loss = criterion(outputs, y.to(torch.long).reshape(-1))
                 loss.backward()
                 optimizer.step()
 
                 total_loss += loss.item()
 
             avg_loss = total_loss / len(train_dataloader)
-            print(f'Epoch [{epoch+1}/{num_epochs}], Loss: {avg_loss:.4f}')
+
+            accuracy = total_correct / total_samples
+            self.logger.log_stat("Imitation Train accuracy", accuracy, epoch)
+            print(f"Epoch [{epoch+1}/{num_epochs}], Train Accuracy: {accuracy:.4f}")
+
+            print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {avg_loss:.4f}")
             self.logger.log_stat("Imitation Train Loss", avg_loss, epoch)
 
             if (epoch + 1) % eval_interval == 0:
                 self.mac.set_evaluation_mode()
                 total_correct = 0
                 total_samples = 0
-                
+
                 self.mac.hidden_states = None
                 self.mac.init_hidden(batch_size=int(batch_size / self.args.n_agents), n_agents=self.args.n_agents)
-                
-                action_counts = torch.zeros(19, device=device) 
+
+                action_counts = torch.zeros(19, device=device)
 
                 with torch.no_grad():
                     for test_batch in test_dataloader:
@@ -394,22 +419,15 @@ class ParallelRunner:
                         if x_test.shape[0] != batch_size:
                             continue
 
-                        outputs_test = self.mac.supervised_select_actions(x_test)
+                        outputs_test = self.mac.supervised_select_actions(x_test).reshape(-1, 19)
 
                         indices = torch.argmax(outputs_test, dim=-1)
                         flatten_indices = indices.reshape(-1)
                         action_counts += torch.bincount(flatten_indices, minlength=19)
-                        
-                        _b, _n, num_classes = outputs_test.size()
-                        one_hot = torch.zeros(_b, _n, num_classes, device=outputs_test.device)
-                        one_hot[torch.arange(_b).unsqueeze(1), torch.arange(_n), indices] = 1.0
-                        y_test = F.one_hot(y_test.to(torch.int64), num_classes=19).reshape(
-                            int(batch_size / self.args.n_agents), self.args.n_agents, 19
-                        ).float()
 
                         total_samples += batch_size
-                        total_correct += (one_hot == y_test.squeeze()).sum().item()
-                        
+                        total_correct += (indices == y_test.reshape(-1)).sum().item()
+
                 action_counts_np = action_counts.cpu().numpy()
                 for action_index, count in enumerate(action_counts_np):
                     if action_index < 9:
@@ -417,27 +435,27 @@ class ParallelRunner:
 
                 accuracy = total_correct / total_samples
                 self.logger.log_stat("Imitation Eval accuracy", accuracy, epoch)
-                print(f'Epoch [{epoch+1}/{num_epochs}], Eval Accuracy: {accuracy:.4f}')
+                print(f"Epoch [{epoch+1}/{num_epochs}], Eval Accuracy: {accuracy:.4f}")
 
                 # Early stopping condition
                 if accuracy > best_accuracy:
                     best_accuracy = accuracy
                     patience_counter = 0
-                    for param_group in optimizer.param_groups:
-                        param_group["lr"] *= 0.9
+                    # for param_group in optimizer.param_groups:
+                    #     param_group["lr"] *= 0.9
                 else:
                     patience_counter += 1
                     if patience_counter >= patience:
                         print(f"Early stopping at epoch {epoch+1}, best accuracy: {best_accuracy:.4f}")
                         del data_tensor, label_tensor, test_data_tensor, test_label_tensor
-                        self.mac.agent.to('cpu')
+                        self.mac.agent.to("cpu")
                         torch.cuda.empty_cache()
-                        return 
+                        return
 
         del data_tensor, label_tensor, test_data_tensor, test_label_tensor
-        self.mac.agent.to('cpu')
+        self.mac.agent.to("cpu")
         torch.cuda.empty_cache()
-        return 
+        return
 
 def env_worker(remote, env_fn):
     # Make environment
@@ -445,9 +463,9 @@ def env_worker(remote, env_fn):
     while True:
         cmd, data = remote.recv()
         if cmd == "step":
-            actions = data
+            actions, batch_idx = data
             # Take a step in the environment
-            reward, terminated, env_info = env.step(actions)
+            reward, terminated, env_info = env.step(actions, batch_idx)
             # Return the observations, avail_actions and state to make the next action
             state = env.get_state()
             avail_actions = env.get_avail_actions()
