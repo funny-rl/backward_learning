@@ -201,11 +201,9 @@ class ParallelRunner:
                                 self.win_record[idx] = True
                         else:
                             win_rate.append(0)
-                    
-                    data_reward = sum(data["reward"])
+                    data_reward = data["reward"]
                     post_transition_data["reward"].append((data_reward,))
-
-                    episode_returns[idx] += data_reward
+                    episode_returns[idx] += sum(data_reward)
                     episode_lengths[idx] += 1
                     if not test_mode:
                         self.env_steps_this_run += 1
@@ -231,7 +229,6 @@ class ParallelRunner:
             total_yellow_r += batch_yellow_r 
             total_ball_position_r += batch_ball_position_r
             total_score_r += batch_score_r
-
             # Add post_transiton data into the batch
             self.batch.update(post_transition_data, bs=envs_not_terminated, ts=self.t, mark_filled=False)
 

@@ -9,6 +9,8 @@ import copy
 import numpy as np
 from run.scenario import *
 
+oppon_goal_post = np.array([1.0, 0.0])
+
 def load_env(env_name, algo_name, unique_token, scenario_file_path):
     
     new_env_name = f"{env_name}_{algo_name}_{unique_token}.py"
@@ -54,7 +56,7 @@ class Scenario_Manager():
         
         if not os.path.exists(episode_data_dir):  
             raise ValueError(f"Episode data directory {episode_data_dir} not found.")  
-        
+        # not allow duplicated episode (max: 10)
         sampled_epi_set = sorted(random.sample(os.listdir(episode_data_dir), self.args.num_backward_episode))
         
         self.total_idx_list = []
@@ -92,7 +94,9 @@ class Scenario_Manager():
                 if self.ewma_win_rate[epi_id] > 0.5:
                     while True:
                         data["init_step"][epi_id] = max(0, data["init_step"][epi_id] - 1)
-                        if data[f"{epi_id}"][f"{data['init_step'][epi_id]}"]["ball"][0] >= 0.0:
+                        if np.linalg.norm(data[f"{epi_id}"][f"{data['init_step'][epi_id]}"]["ball"][:2] - oppon_goal_post) <= 1.0:
+                            break
+                        if data[f"{epi_id}"][f"{data['init_step'][epi_id]}"]["ball_owned_team"] != 1:
                             break
                     with open(self.level_file_path, "w") as f:
                         json.dump(data, f, indent=4)

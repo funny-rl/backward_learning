@@ -111,7 +111,7 @@ def run_sequential(args, logger):
             "obs": {"vshape": env_info["obs_shape"], "group": "agents"},
             "actions": {"vshape": (1,), "group": "agents", "dtype": th.long},
             "avail_actions": {"vshape": (env_info["n_actions"],), "group": "agents", "dtype": th.int},
-            "reward": {"vshape": (1,)},
+            "reward": {"vshape": (args.n_reward,)},
             "terminated": {"vshape": (1,), "dtype": th.uint8},
         }
         groups = {

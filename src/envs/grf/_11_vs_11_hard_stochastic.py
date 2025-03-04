@@ -201,8 +201,6 @@ class _11_vs_11_Hard_Stochastic(MultiAgentEnv):
             self.ava = np.array(ava)
             self.prev_obs = obs_dicts
             return self._obs, self._state
-        
-        
     
     def render(self):
         pass

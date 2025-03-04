@@ -49,4 +49,8 @@ rnn_hidden_dim: 64 # Size of hidden state for default rnn agent
 # --- Experiment running params ---
 repeat_id: 1
 label: "default_label"
-
+`
+# n reward & n discount factor 
+n_reward: 7
+# own_changing_r, oob_r, pass_r, player_pos_r, yellow_r, ball_position_r, score_r
+gamma_set : [0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.99]

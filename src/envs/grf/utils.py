@@ -564,7 +564,5 @@ def score_reward(score, done):
         return 20.0
     elif done and my_score < opponent_score:
         return -5.0
-    elif done and my_score == opponent_score:
-        return -4.5
     else:
         return 0.0
