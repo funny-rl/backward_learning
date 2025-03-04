@@ -4,6 +4,7 @@ import random
 import shutil
 import atexit
 import gfootball
+import copy
 
 import numpy as np
 from run.scenario import *
@@ -97,7 +98,7 @@ class Scenario_Manager():
                         json.dump(data, f, indent=4)
             else:
                 self.ewma_win_rate[epi_id] = self.decay_rate * self.ewma_win_rate[epi_id] + (1 - self.decay_rate) * 0.0
-        ewma_record = self.ewma_win_rate        
+        ewma_record = copy.deepcopy(self.ewma_win_rate)
         for idx, result in enumerate(episode_record):
             epi_id = selected_episode[idx]
             if result and self.ewma_win_rate[epi_id] > 0.5:

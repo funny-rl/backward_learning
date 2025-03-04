@@ -440,14 +440,17 @@ class RewardModel:
         )
         
         player_pos_r = player_pos_reward(
-            left_team_pos = obs["left_team"],
+            left_team_pos = obs["left_team"][1:],
             ball_pos = obs["ball"][:2],
+            prev_ball_owned_team = prev_ball_owned_team,
+            ball_owned_team = ball_owned_team,
         )
             
         yellow_r = yellow_reward(
             prev_yellow = prev_obs["left_team_yellow_card"],
             yellow = obs["left_team_yellow_card"],
         )
+        
         ball_position_r = ball_position_reward(obs["ball"])
         score_r = score_reward(
             score = obs["score"],
@@ -463,7 +466,6 @@ class RewardModel:
                     self.pass_start[batch_idx] = True
                     self.passing_player[batch_idx] = prev_ball_owned_player
                     self.passing_x[batch_idx] = prev_ball_x
-                    
         if self.pass_start[batch_idx]:
             if ball_owned_team == 1:
                 self.pass_start[batch_idx] = False
@@ -479,7 +481,7 @@ class RewardModel:
                 self.passing_player[batch_idx] = None
                 if ball_x - self.passing_x[batch_idx] > 0:
                     self.passing_x[batch_idx] = None   
-                    return 0.1
+                    return 0.05
                 else:
                     self.passing_x[batch_idx] = None
                     return 0.0
@@ -488,18 +490,20 @@ class RewardModel:
     def ownership_changing_reward(self, prev_ball_owned_team, ball_owned_team, batch_idx):
 
         if prev_ball_owned_team == 1 and ball_owned_team == 0:
-            return 0.001
+            return 0.05
         elif prev_ball_owned_team == 0 and ball_owned_team == 1:
-            return -0.0015
+            return -0.05
         elif prev_ball_owned_team == -1 and ball_owned_team == 0:
-            if self.pass_start[batch_idx]:
+            if self.pass_start[batch_idx]: # if the ball is passed
                 return 0.0
             else:
-                return 0.001
+                return 0.01
         elif prev_ball_owned_team == -1 and ball_owned_team == 1:
-            return -0.0015
+            return -0.01
         elif prev_ball_owned_team == 1 and ball_owned_team == 1:
-            return -0.002
+            return -0.0005
+        elif prev_ball_owned_team == 0 and ball_owned_team == 0:
+            return 0.0005
         else:
             return 0.0
 @jit(nopython=True) 
@@ -517,9 +521,9 @@ def yellow_reward(prev_yellow, yellow):
     return -0.1 * left_yellow
 
 @jit(nopython=True)
-def player_pos_reward(left_team_pos, ball_pos):
-    if np.all((left_team_pos - ball_pos)[:, 0] >= 0.0):
-        return -0.01
+def player_pos_reward(left_team_pos, ball_pos, prev_ball_owned_team, ball_owned_team):
+    if np.all((left_team_pos - ball_pos)[:, 0] >= 0.0) and prev_ball_owned_team == ball_owned_team == 1:
+        return -0.001
     else:
         return 0.0
 
@@ -530,11 +534,11 @@ def ball_position_reward(ball_position):
     if (-END_X <= ball_x and ball_x < -PENALTY_X) and (
         -PENALTY_Y < ball_y and ball_y < PENALTY_Y
     ):
-        ball_position_r = -0.005
+        ball_position_r = -0.0005
     elif (-END_X <= ball_x and ball_x < -MIDDLE_X) and (
         -END_Y < ball_y and ball_y < END_Y
     ):
-        ball_position_r = -0.001
+        ball_position_r = -0.0001
     elif (-MIDDLE_X <= ball_x and ball_x <= MIDDLE_X) and (
         -END_Y < ball_y and ball_y < END_Y
     ):
@@ -542,11 +546,11 @@ def ball_position_reward(ball_position):
     elif (MIDDLE_X < ball_x and ball_x <= END_X) and (
         -END_Y < ball_y and ball_y < END_Y
     ):
-        ball_position_r = 0.001
+        ball_position_r = 0.0001
     elif (PENALTY_X < ball_x and ball_x <= END_X) and (
         -PENALTY_Y < ball_y and ball_y < PENALTY_Y
     ):
-        ball_position_r = 0.005
+        ball_position_r = 0.0005
 
     else:
         ball_position_r = 0.0
@@ -557,10 +561,10 @@ def ball_position_reward(ball_position):
 def score_reward(score, done):
     my_score, opponent_score = score
     if done and my_score > opponent_score:
-        return 10.0
+        return 20.0
     elif done and my_score < opponent_score:
-        return -2.0
+        return -5.0
     elif done and my_score == opponent_score:
-        return -1.5
+        return -4.5
     else:
         return 0.0

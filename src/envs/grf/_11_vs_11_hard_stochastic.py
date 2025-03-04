@@ -127,7 +127,7 @@ class _11_vs_11_Hard_Stochastic(MultiAgentEnv):
             self._state = self._encode_state(obs_dict)  # Because it is absolute coordinates, it does not matter if information from a specific agent is used.
             self.ava = np.array(ava)
             
-            own_changing_r, oob_r, pass_r, yellow_r, ball_position_r, score_r = self.reward_model.calc_reward(
+            own_changing_r, oob_r, pass_r, player_pos_r, yellow_r, ball_position_r, score_r = self.reward_model.calc_reward(
                 self.prev_obs[0], 
                 o[0], 
                 done, 
@@ -140,6 +140,7 @@ class _11_vs_11_Hard_Stochastic(MultiAgentEnv):
                 own_changing_r, 
                 oob_r, 
                 pass_r, 
+                player_pos_r,
                 yellow_r, 
                 ball_position_r, 
                 score_r, 

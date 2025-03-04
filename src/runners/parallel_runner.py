@@ -184,7 +184,7 @@ class ParallelRunner:
                 if not terminated[idx]:
                     data = parent_conn.recv()
                     # Remaining data for this current timestep
-                    own_changing_r, oob_r, pass_r, yellow_r, player_pos_r, ball_position_r, score_r = data["reward"]
+                    own_changing_r, oob_r, pass_r, player_pos_r, yellow_r, ball_position_r, score_r = data["reward"]
                     
                     batch_own_changing_r += own_changing_r
                     batch_oob_r += oob_r
