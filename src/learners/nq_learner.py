@@ -64,7 +64,6 @@ class NQLearner:
             self.mixer = SPECTraMixer(args)
         else:
             raise "mixer error"
-
         self.target_mixer = copy.deepcopy(self.mixer)
         self.params += list(self.mixer.parameters())
 

@@ -426,7 +426,7 @@ class RewardModel:
         
         own_changing_r = self.ownership_changing_reward(prev_ball_owned_team, ball_owned_team, batch_idx)
         oob_r = out_of_boundary_reward(prev_obs["game_mode"], obs["game_mode"], obs["left_team"])
-
+        
         pass_r = self.pass_reward(
             prev_gamemode = prev_obs["game_mode"], 
             gamemode = obs["game_mode"],
@@ -481,7 +481,7 @@ class RewardModel:
                 self.passing_player[batch_idx] = None
                 if ball_x - self.passing_x[batch_idx] > 0:
                     self.passing_x[batch_idx] = None   
-                    return 0.05
+                    return 0.005
                 else:
                     self.passing_x[batch_idx] = None
                     return 0.0
@@ -489,21 +489,14 @@ class RewardModel:
 
     def ownership_changing_reward(self, prev_ball_owned_team, ball_owned_team, batch_idx):
 
-        if prev_ball_owned_team == 1 and ball_owned_team == 0:
-            return 0.05
-        elif prev_ball_owned_team == 0 and ball_owned_team == 1:
-            return -0.05
-        elif prev_ball_owned_team == -1 and ball_owned_team == 0:
-            if self.pass_start[batch_idx]: # if the ball is passed
-                return 0.0
-            else:
-                return 0.01
-        elif prev_ball_owned_team == -1 and ball_owned_team == 1:
-            return -0.01
+        if prev_ball_owned_team == 1 and ball_owned_team == 0 or \
+            prev_ball_owned_team == -1 and ball_owned_team == 0: 
+            return 0.002
+        elif prev_ball_owned_team == 0 and ball_owned_team == 1 or \
+            prev_ball_owned_team == -1 and ball_owned_team == 1: 
+            return -0.003
         elif prev_ball_owned_team == 1 and ball_owned_team == 1:
-            return -0.0005
-        elif prev_ball_owned_team == 0 and ball_owned_team == 0:
-            return 0.0005
+            return -0.0001
         else:
             return 0.0
 @jit(nopython=True) 
@@ -560,9 +553,9 @@ def ball_position_reward(ball_position):
 @jit(nopython=True)
 def score_reward(score, done):
     my_score, opponent_score = score
-    if done and my_score > opponent_score:
-        return 20.0
-    elif done and my_score < opponent_score:
-        return -5.0
+    if my_score > opponent_score:
+        return 10.0
+    elif done or my_score < opponent_score:
+        return -1.0
     else:
         return 0.0

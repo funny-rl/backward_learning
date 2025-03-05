@@ -201,9 +201,13 @@ class ParallelRunner:
                                 self.win_record[idx] = True
                         else:
                             win_rate.append(0)
-                    data_reward = data["reward"]
+                    if self.args.n_reward == 1:
+                        data_reward = sum(data["reward"])
+                        episode_returns[idx] += data_reward
+                    else:
+                        data_reward = data["reward"]
+                        episode_returns[idx] += sum(data_reward)
                     post_transition_data["reward"].append((data_reward,))
-                    episode_returns[idx] += sum(data_reward)
                     episode_lengths[idx] += 1
                     if not test_mode:
                         self.env_steps_this_run += 1
